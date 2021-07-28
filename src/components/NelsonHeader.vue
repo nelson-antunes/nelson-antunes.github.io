@@ -1,25 +1,21 @@
-* {
-  margin: 0
-}
+<template>
+  <header>
+    <nav class="nav">
+      <div class="nav-title">
+        <router-link to="/">nelson</router-link>
+      </div>
+      <div class="nav-list">
+        <ul>
+          <li>
+            <router-link to="/portfolio">portfolio</router-link>
+          </li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+</template>
 
-:root {
-  --dark-blue: #022738;
-  --dark-green: #26706F;
-  --medium-blue: #4D869E;
-  --medium-green: #28DEAD;
-  --light-green: #3FFCD3;
-  --white87: rgba(255,255,255,87);
-
-  background-color: var(--dark-blue);
-  color: var(--white87);
-}
-
-a {
-  color: var(--medium-green);
-  font-weight: bold;
-  text-decoration: none;
-}
-
+<style lang="scss" scoped>
 .nav {
   display: flex;
   justify-content: space-between;
@@ -31,11 +27,8 @@ a {
   font-size: 2rem;
   margin: 0 .5rem;
 }
-.nav-first {
-  order: -1
-}
 
-.nav-list {
+.nav-list li {
   list-style: none;
 }
 
@@ -52,3 +45,4 @@ a {
 .nav-list li a:hover {
   background-color: var(--light-green);
 }
+</style>
