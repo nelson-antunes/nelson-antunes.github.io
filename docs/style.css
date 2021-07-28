@@ -14,9 +14,17 @@
   color: var(--white87);
 }
 
+a {
+  color: var(--medium-green);
+  font-weight: bold;
+  text-decoration: none;
+}
+
 .nav {
   display: flex;
   justify-content: space-between;
+  box-sizing: border-box;
+  align-items: center;
 }
 
 .nav-title {
@@ -31,9 +39,16 @@
   list-style: none;
 }
 
+.nav-list li a {
+  color: #022738;
+  background-color: var(--medium-green);
 
-a {
-  color: var(--medium-green);
-  font-weight: bold;
-  text-decoration: none;
+  border-radius: 5%;
+  padding: .5rem .8rem;
+  margin: .5rem;
+
+  transition: 300ms;
+}
+.nav-list li a:hover {
+  background-color: var(--light-green);
 }
