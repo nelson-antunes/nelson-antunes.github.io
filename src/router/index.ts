@@ -1,17 +1,24 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import Raiz from '../views/Raiz.vue'
+import Home from '../views/Home.vue'
 
 const routes = [
   {
     path: '/',
-    name: 'raiz',
-    component: Raiz
+    name: 'home',
+    component: Home
   },
   {
-    path: '/portfolio',
-    name: 'portfolio',
+    path: '/projects',
+    name: 'projects',
     component: function () {
-      return import(/* webpackChunkName: "about" */ '../views/Portfolio.vue')
+      return import('../views/Projects.vue')
+    }
+  },
+  {
+    path: '/cv',
+    name: 'cv',
+    component: function () {
+      return import('../views/CV.vue')
     }
   }
 ]

@@ -1,0 +1,16 @@
+{
+  "pt-br": {
+    "home": "início",
+    "projects": "projetos",
+    "resume": "currículo",
+    "hello": "olá",
+    "language": "idioma"
+  },
+  "en": {
+    "home": "home",
+    "projects": "projects",
+    "resume": "resume",
+    "hello": "hello",
+    "language": "language"
+  }
+}
