@@ -1,0 +1,1 @@
+import{o as e,c as n,b as r,t}from"./vendor.c5118c55.js";const s={},l=r("section",null," 🚧 🏗 🚧 ",-1);s.render=function(s,o){return e(),n("article",null,[r("h1",null,t(s.$t("resume")),1),l])};export{s as default};
