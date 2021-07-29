@@ -4762,6 +4762,1166 @@ function createCompileError(code, loc, options = {}) {
   error.domain = domain;
   return error;
 }
+function defaultOnError(error) {
+  throw error;
+}
+function createPosition(line, column, offset) {
+  return { line, column, offset };
+}
+function createLocation(start, end, source) {
+  const loc = { start, end };
+  if (source != null) {
+    loc.source = source;
+  }
+  return loc;
+}
+const CHAR_SP = " ";
+const CHAR_CR = "\r";
+const CHAR_LF = "\n";
+const CHAR_LS = String.fromCharCode(8232);
+const CHAR_PS = String.fromCharCode(8233);
+function createScanner(str) {
+  const _buf = str;
+  let _index = 0;
+  let _line = 1;
+  let _column = 1;
+  let _peekOffset = 0;
+  const isCRLF = (index2) => _buf[index2] === CHAR_CR && _buf[index2 + 1] === CHAR_LF;
+  const isLF = (index2) => _buf[index2] === CHAR_LF;
+  const isPS = (index2) => _buf[index2] === CHAR_PS;
+  const isLS = (index2) => _buf[index2] === CHAR_LS;
+  const isLineEnd = (index2) => isCRLF(index2) || isLF(index2) || isPS(index2) || isLS(index2);
+  const index = () => _index;
+  const line = () => _line;
+  const column = () => _column;
+  const peekOffset = () => _peekOffset;
+  const charAt = (offset) => isCRLF(offset) || isPS(offset) || isLS(offset) ? CHAR_LF : _buf[offset];
+  const currentChar = () => charAt(_index);
+  const currentPeek = () => charAt(_index + _peekOffset);
+  function next() {
+    _peekOffset = 0;
+    if (isLineEnd(_index)) {
+      _line++;
+      _column = 0;
+    }
+    if (isCRLF(_index)) {
+      _index++;
+    }
+    _index++;
+    _column++;
+    return _buf[_index];
+  }
+  function peek() {
+    if (isCRLF(_index + _peekOffset)) {
+      _peekOffset++;
+    }
+    _peekOffset++;
+    return _buf[_index + _peekOffset];
+  }
+  function reset2() {
+    _index = 0;
+    _line = 1;
+    _column = 1;
+    _peekOffset = 0;
+  }
+  function resetPeek(offset = 0) {
+    _peekOffset = offset;
+  }
+  function skipToPeek() {
+    const target = _index + _peekOffset;
+    while (target !== _index) {
+      next();
+    }
+    _peekOffset = 0;
+  }
+  return {
+    index,
+    line,
+    column,
+    peekOffset,
+    charAt,
+    currentChar,
+    currentPeek,
+    next,
+    peek,
+    reset: reset2,
+    resetPeek,
+    skipToPeek
+  };
+}
+const EOF = void 0;
+const LITERAL_DELIMITER = "'";
+const ERROR_DOMAIN$1 = "tokenizer";
+function createTokenizer(source, options = {}) {
+  const location2 = options.location !== false;
+  const _scnr = createScanner(source);
+  const currentOffset = () => _scnr.index();
+  const currentPosition = () => createPosition(_scnr.line(), _scnr.column(), _scnr.index());
+  const _initLoc = currentPosition();
+  const _initOffset = currentOffset();
+  const _context = {
+    currentType: 14,
+    offset: _initOffset,
+    startLoc: _initLoc,
+    endLoc: _initLoc,
+    lastType: 14,
+    lastOffset: _initOffset,
+    lastStartLoc: _initLoc,
+    lastEndLoc: _initLoc,
+    braceNest: 0,
+    inLinked: false,
+    text: ""
+  };
+  const context = () => _context;
+  const { onError } = options;
+  function emitError(code, pos, offset, ...args) {
+    const ctx = context();
+    pos.column += offset;
+    pos.offset += offset;
+    if (onError) {
+      const loc = createLocation(ctx.startLoc, pos);
+      const err = createCompileError(code, loc, {
+        domain: ERROR_DOMAIN$1,
+        args
+      });
+      onError(err);
+    }
+  }
+  function getToken(context2, type, value) {
+    context2.endLoc = currentPosition();
+    context2.currentType = type;
+    const token = { type };
+    if (location2) {
+      token.loc = createLocation(context2.startLoc, context2.endLoc);
+    }
+    if (value != null) {
+      token.value = value;
+    }
+    return token;
+  }
+  const getEndToken = (context2) => getToken(context2, 14);
+  function eat(scnr, ch) {
+    if (scnr.currentChar() === ch) {
+      scnr.next();
+      return ch;
+    } else {
+      emitError(0, currentPosition(), 0, ch);
+      return "";
+    }
+  }
+  function peekSpaces(scnr) {
+    let buf = "";
+    while (scnr.currentPeek() === CHAR_SP || scnr.currentPeek() === CHAR_LF) {
+      buf += scnr.currentPeek();
+      scnr.peek();
+    }
+    return buf;
+  }
+  function skipSpaces(scnr) {
+    const buf = peekSpaces(scnr);
+    scnr.skipToPeek();
+    return buf;
+  }
+  function isIdentifierStart(ch) {
+    if (ch === EOF) {
+      return false;
+    }
+    const cc = ch.charCodeAt(0);
+    return cc >= 97 && cc <= 122 || cc >= 65 && cc <= 90 || cc === 95;
+  }
+  function isNumberStart(ch) {
+    if (ch === EOF) {
+      return false;
+    }
+    const cc = ch.charCodeAt(0);
+    return cc >= 48 && cc <= 57;
+  }
+  function isNamedIdentifierStart(scnr, context2) {
+    const { currentType } = context2;
+    if (currentType !== 2) {
+      return false;
+    }
+    peekSpaces(scnr);
+    const ret = isIdentifierStart(scnr.currentPeek());
+    scnr.resetPeek();
+    return ret;
+  }
+  function isListIdentifierStart(scnr, context2) {
+    const { currentType } = context2;
+    if (currentType !== 2) {
+      return false;
+    }
+    peekSpaces(scnr);
+    const ch = scnr.currentPeek() === "-" ? scnr.peek() : scnr.currentPeek();
+    const ret = isNumberStart(ch);
+    scnr.resetPeek();
+    return ret;
+  }
+  function isLiteralStart(scnr, context2) {
+    const { currentType } = context2;
+    if (currentType !== 2) {
+      return false;
+    }
+    peekSpaces(scnr);
+    const ret = scnr.currentPeek() === LITERAL_DELIMITER;
+    scnr.resetPeek();
+    return ret;
+  }
+  function isLinkedDotStart(scnr, context2) {
+    const { currentType } = context2;
+    if (currentType !== 8) {
+      return false;
+    }
+    peekSpaces(scnr);
+    const ret = scnr.currentPeek() === ".";
+    scnr.resetPeek();
+    return ret;
+  }
+  function isLinkedModifierStart(scnr, context2) {
+    const { currentType } = context2;
+    if (currentType !== 9) {
+      return false;
+    }
+    peekSpaces(scnr);
+    const ret = isIdentifierStart(scnr.currentPeek());
+    scnr.resetPeek();
+    return ret;
+  }
+  function isLinkedDelimiterStart(scnr, context2) {
+    const { currentType } = context2;
+    if (!(currentType === 8 || currentType === 12)) {
+      return false;
+    }
+    peekSpaces(scnr);
+    const ret = scnr.currentPeek() === ":";
+    scnr.resetPeek();
+    return ret;
+  }
+  function isLinkedReferStart(scnr, context2) {
+    const { currentType } = context2;
+    if (currentType !== 10) {
+      return false;
+    }
+    const fn = () => {
+      const ch = scnr.currentPeek();
+      if (ch === "{") {
+        return isIdentifierStart(scnr.peek());
+      } else if (ch === "@" || ch === "%" || ch === "|" || ch === ":" || ch === "." || ch === CHAR_SP || !ch) {
+        return false;
+      } else if (ch === CHAR_LF) {
+        scnr.peek();
+        return fn();
+      } else {
+        return isIdentifierStart(ch);
+      }
+    };
+    const ret = fn();
+    scnr.resetPeek();
+    return ret;
+  }
+  function isPluralStart(scnr) {
+    peekSpaces(scnr);
+    const ret = scnr.currentPeek() === "|";
+    scnr.resetPeek();
+    return ret;
+  }
+  function isTextStart(scnr, reset2 = true) {
+    const fn = (hasSpace = false, prev = "", detectModulo = false) => {
+      const ch = scnr.currentPeek();
+      if (ch === "{") {
+        return prev === "%" ? false : hasSpace;
+      } else if (ch === "@" || !ch) {
+        return prev === "%" ? true : hasSpace;
+      } else if (ch === "%") {
+        scnr.peek();
+        return fn(hasSpace, "%", true);
+      } else if (ch === "|") {
+        return prev === "%" || detectModulo ? true : !(prev === CHAR_SP || prev === CHAR_LF);
+      } else if (ch === CHAR_SP) {
+        scnr.peek();
+        return fn(true, CHAR_SP, detectModulo);
+      } else if (ch === CHAR_LF) {
+        scnr.peek();
+        return fn(true, CHAR_LF, detectModulo);
+      } else {
+        return true;
+      }
+    };
+    const ret = fn();
+    reset2 && scnr.resetPeek();
+    return ret;
+  }
+  function takeChar(scnr, fn) {
+    const ch = scnr.currentChar();
+    if (ch === EOF) {
+      return EOF;
+    }
+    if (fn(ch)) {
+      scnr.next();
+      return ch;
+    }
+    return null;
+  }
+  function takeIdentifierChar(scnr) {
+    const closure = (ch) => {
+      const cc = ch.charCodeAt(0);
+      return cc >= 97 && cc <= 122 || cc >= 65 && cc <= 90 || cc >= 48 && cc <= 57 || cc === 95 || cc === 36;
+    };
+    return takeChar(scnr, closure);
+  }
+  function takeDigit(scnr) {
+    const closure = (ch) => {
+      const cc = ch.charCodeAt(0);
+      return cc >= 48 && cc <= 57;
+    };
+    return takeChar(scnr, closure);
+  }
+  function takeHexDigit(scnr) {
+    const closure = (ch) => {
+      const cc = ch.charCodeAt(0);
+      return cc >= 48 && cc <= 57 || cc >= 65 && cc <= 70 || cc >= 97 && cc <= 102;
+    };
+    return takeChar(scnr, closure);
+  }
+  function getDigits(scnr) {
+    let ch = "";
+    let num = "";
+    while (ch = takeDigit(scnr)) {
+      num += ch;
+    }
+    return num;
+  }
+  function readText(scnr) {
+    const fn = (buf) => {
+      const ch = scnr.currentChar();
+      if (ch === "{" || ch === "}" || ch === "@" || !ch) {
+        return buf;
+      } else if (ch === "%") {
+        if (isTextStart(scnr)) {
+          buf += ch;
+          scnr.next();
+          return fn(buf);
+        } else {
+          return buf;
+        }
+      } else if (ch === "|") {
+        return buf;
+      } else if (ch === CHAR_SP || ch === CHAR_LF) {
+        if (isTextStart(scnr)) {
+          buf += ch;
+          scnr.next();
+          return fn(buf);
+        } else if (isPluralStart(scnr)) {
+          return buf;
+        } else {
+          buf += ch;
+          scnr.next();
+          return fn(buf);
+        }
+      } else {
+        buf += ch;
+        scnr.next();
+        return fn(buf);
+      }
+    };
+    return fn("");
+  }
+  function readNamedIdentifier(scnr) {
+    skipSpaces(scnr);
+    let ch = "";
+    let name = "";
+    while (ch = takeIdentifierChar(scnr)) {
+      name += ch;
+    }
+    if (scnr.currentChar() === EOF) {
+      emitError(6, currentPosition(), 0);
+    }
+    return name;
+  }
+  function readListIdentifier(scnr) {
+    skipSpaces(scnr);
+    let value = "";
+    if (scnr.currentChar() === "-") {
+      scnr.next();
+      value += `-${getDigits(scnr)}`;
+    } else {
+      value += getDigits(scnr);
+    }
+    if (scnr.currentChar() === EOF) {
+      emitError(6, currentPosition(), 0);
+    }
+    return value;
+  }
+  function readLiteral(scnr) {
+    skipSpaces(scnr);
+    eat(scnr, `'`);
+    let ch = "";
+    let literal = "";
+    const fn = (x) => x !== LITERAL_DELIMITER && x !== CHAR_LF;
+    while (ch = takeChar(scnr, fn)) {
+      if (ch === "\\") {
+        literal += readEscapeSequence(scnr);
+      } else {
+        literal += ch;
+      }
+    }
+    const current = scnr.currentChar();
+    if (current === CHAR_LF || current === EOF) {
+      emitError(2, currentPosition(), 0);
+      if (current === CHAR_LF) {
+        scnr.next();
+        eat(scnr, `'`);
+      }
+      return literal;
+    }
+    eat(scnr, `'`);
+    return literal;
+  }
+  function readEscapeSequence(scnr) {
+    const ch = scnr.currentChar();
+    switch (ch) {
+      case "\\":
+      case `'`:
+        scnr.next();
+        return `\\${ch}`;
+      case "u":
+        return readUnicodeEscapeSequence(scnr, ch, 4);
+      case "U":
+        return readUnicodeEscapeSequence(scnr, ch, 6);
+      default:
+        emitError(3, currentPosition(), 0, ch);
+        return "";
+    }
+  }
+  function readUnicodeEscapeSequence(scnr, unicode, digits) {
+    eat(scnr, unicode);
+    let sequence = "";
+    for (let i = 0; i < digits; i++) {
+      const ch = takeHexDigit(scnr);
+      if (!ch) {
+        emitError(4, currentPosition(), 0, `\\${unicode}${sequence}${scnr.currentChar()}`);
+        break;
+      }
+      sequence += ch;
+    }
+    return `\\${unicode}${sequence}`;
+  }
+  function readInvalidIdentifier(scnr) {
+    skipSpaces(scnr);
+    let ch = "";
+    let identifiers = "";
+    const closure = (ch2) => ch2 !== "{" && ch2 !== "}" && ch2 !== CHAR_SP && ch2 !== CHAR_LF;
+    while (ch = takeChar(scnr, closure)) {
+      identifiers += ch;
+    }
+    return identifiers;
+  }
+  function readLinkedModifier(scnr) {
+    let ch = "";
+    let name = "";
+    while (ch = takeIdentifierChar(scnr)) {
+      name += ch;
+    }
+    return name;
+  }
+  function readLinkedRefer(scnr) {
+    const fn = (detect = false, buf) => {
+      const ch = scnr.currentChar();
+      if (ch === "{" || ch === "%" || ch === "@" || ch === "|" || !ch) {
+        return buf;
+      } else if (ch === CHAR_SP) {
+        return buf;
+      } else if (ch === CHAR_LF) {
+        buf += ch;
+        scnr.next();
+        return fn(detect, buf);
+      } else {
+        buf += ch;
+        scnr.next();
+        return fn(true, buf);
+      }
+    };
+    return fn(false, "");
+  }
+  function readPlural(scnr) {
+    skipSpaces(scnr);
+    const plural = eat(scnr, "|");
+    skipSpaces(scnr);
+    return plural;
+  }
+  function readTokenInPlaceholder(scnr, context2) {
+    let token = null;
+    const ch = scnr.currentChar();
+    switch (ch) {
+      case "{":
+        if (context2.braceNest >= 1) {
+          emitError(8, currentPosition(), 0);
+        }
+        scnr.next();
+        token = getToken(context2, 2, "{");
+        skipSpaces(scnr);
+        context2.braceNest++;
+        return token;
+      case "}":
+        if (context2.braceNest > 0 && context2.currentType === 2) {
+          emitError(7, currentPosition(), 0);
+        }
+        scnr.next();
+        token = getToken(context2, 3, "}");
+        context2.braceNest--;
+        context2.braceNest > 0 && skipSpaces(scnr);
+        if (context2.inLinked && context2.braceNest === 0) {
+          context2.inLinked = false;
+        }
+        return token;
+      case "@":
+        if (context2.braceNest > 0) {
+          emitError(6, currentPosition(), 0);
+        }
+        token = readTokenInLinked(scnr, context2) || getEndToken(context2);
+        context2.braceNest = 0;
+        return token;
+      default:
+        let validNamedIdentifier = true;
+        let validListIdentifier = true;
+        let validLiteral = true;
+        if (isPluralStart(scnr)) {
+          if (context2.braceNest > 0) {
+            emitError(6, currentPosition(), 0);
+          }
+          token = getToken(context2, 1, readPlural(scnr));
+          context2.braceNest = 0;
+          context2.inLinked = false;
+          return token;
+        }
+        if (context2.braceNest > 0 && (context2.currentType === 5 || context2.currentType === 6 || context2.currentType === 7)) {
+          emitError(6, currentPosition(), 0);
+          context2.braceNest = 0;
+          return readToken(scnr, context2);
+        }
+        if (validNamedIdentifier = isNamedIdentifierStart(scnr, context2)) {
+          token = getToken(context2, 5, readNamedIdentifier(scnr));
+          skipSpaces(scnr);
+          return token;
+        }
+        if (validListIdentifier = isListIdentifierStart(scnr, context2)) {
+          token = getToken(context2, 6, readListIdentifier(scnr));
+          skipSpaces(scnr);
+          return token;
+        }
+        if (validLiteral = isLiteralStart(scnr, context2)) {
+          token = getToken(context2, 7, readLiteral(scnr));
+          skipSpaces(scnr);
+          return token;
+        }
+        if (!validNamedIdentifier && !validListIdentifier && !validLiteral) {
+          token = getToken(context2, 13, readInvalidIdentifier(scnr));
+          emitError(1, currentPosition(), 0, token.value);
+          skipSpaces(scnr);
+          return token;
+        }
+        break;
+    }
+    return token;
+  }
+  function readTokenInLinked(scnr, context2) {
+    const { currentType } = context2;
+    let token = null;
+    const ch = scnr.currentChar();
+    if ((currentType === 8 || currentType === 9 || currentType === 12 || currentType === 10) && (ch === CHAR_LF || ch === CHAR_SP)) {
+      emitError(9, currentPosition(), 0);
+    }
+    switch (ch) {
+      case "@":
+        scnr.next();
+        token = getToken(context2, 8, "@");
+        context2.inLinked = true;
+        return token;
+      case ".":
+        skipSpaces(scnr);
+        scnr.next();
+        return getToken(context2, 9, ".");
+      case ":":
+        skipSpaces(scnr);
+        scnr.next();
+        return getToken(context2, 10, ":");
+      default:
+        if (isPluralStart(scnr)) {
+          token = getToken(context2, 1, readPlural(scnr));
+          context2.braceNest = 0;
+          context2.inLinked = false;
+          return token;
+        }
+        if (isLinkedDotStart(scnr, context2) || isLinkedDelimiterStart(scnr, context2)) {
+          skipSpaces(scnr);
+          return readTokenInLinked(scnr, context2);
+        }
+        if (isLinkedModifierStart(scnr, context2)) {
+          skipSpaces(scnr);
+          return getToken(context2, 12, readLinkedModifier(scnr));
+        }
+        if (isLinkedReferStart(scnr, context2)) {
+          skipSpaces(scnr);
+          if (ch === "{") {
+            return readTokenInPlaceholder(scnr, context2) || token;
+          } else {
+            return getToken(context2, 11, readLinkedRefer(scnr));
+          }
+        }
+        if (currentType === 8) {
+          emitError(9, currentPosition(), 0);
+        }
+        context2.braceNest = 0;
+        context2.inLinked = false;
+        return readToken(scnr, context2);
+    }
+  }
+  function readToken(scnr, context2) {
+    let token = { type: 14 };
+    if (context2.braceNest > 0) {
+      return readTokenInPlaceholder(scnr, context2) || getEndToken(context2);
+    }
+    if (context2.inLinked) {
+      return readTokenInLinked(scnr, context2) || getEndToken(context2);
+    }
+    const ch = scnr.currentChar();
+    switch (ch) {
+      case "{":
+        return readTokenInPlaceholder(scnr, context2) || getEndToken(context2);
+      case "}":
+        emitError(5, currentPosition(), 0);
+        scnr.next();
+        return getToken(context2, 3, "}");
+      case "@":
+        return readTokenInLinked(scnr, context2) || getEndToken(context2);
+      default:
+        if (isPluralStart(scnr)) {
+          token = getToken(context2, 1, readPlural(scnr));
+          context2.braceNest = 0;
+          context2.inLinked = false;
+          return token;
+        }
+        if (isTextStart(scnr)) {
+          return getToken(context2, 0, readText(scnr));
+        }
+        if (ch === "%") {
+          scnr.next();
+          return getToken(context2, 4, "%");
+        }
+        break;
+    }
+    return token;
+  }
+  function nextToken() {
+    const { currentType, offset, startLoc, endLoc } = _context;
+    _context.lastType = currentType;
+    _context.lastOffset = offset;
+    _context.lastStartLoc = startLoc;
+    _context.lastEndLoc = endLoc;
+    _context.offset = currentOffset();
+    _context.startLoc = currentPosition();
+    if (_scnr.currentChar() === EOF) {
+      return getToken(_context, 14);
+    }
+    return readToken(_scnr, _context);
+  }
+  return {
+    nextToken,
+    currentOffset,
+    currentPosition,
+    context
+  };
+}
+const ERROR_DOMAIN = "parser";
+const KNOWN_ESCAPES = /(?:\\\\|\\'|\\u([0-9a-fA-F]{4})|\\U([0-9a-fA-F]{6}))/g;
+function fromEscapeSequence(match, codePoint4, codePoint6) {
+  switch (match) {
+    case `\\\\`:
+      return `\\`;
+    case `\\'`:
+      return `'`;
+    default: {
+      const codePoint = parseInt(codePoint4 || codePoint6, 16);
+      if (codePoint <= 55295 || codePoint >= 57344) {
+        return String.fromCodePoint(codePoint);
+      }
+      return "\uFFFD";
+    }
+  }
+}
+function createParser(options = {}) {
+  const location2 = options.location !== false;
+  const { onError } = options;
+  function emitError(tokenzer, code, start, offset, ...args) {
+    const end = tokenzer.currentPosition();
+    end.offset += offset;
+    end.column += offset;
+    if (onError) {
+      const loc = createLocation(start, end);
+      const err = createCompileError(code, loc, {
+        domain: ERROR_DOMAIN,
+        args
+      });
+      onError(err);
+    }
+  }
+  function startNode(type, offset, loc) {
+    const node = {
+      type,
+      start: offset,
+      end: offset
+    };
+    if (location2) {
+      node.loc = { start: loc, end: loc };
+    }
+    return node;
+  }
+  function endNode(node, offset, pos, type) {
+    node.end = offset;
+    if (type) {
+      node.type = type;
+    }
+    if (location2 && node.loc) {
+      node.loc.end = pos;
+    }
+  }
+  function parseText(tokenizer, value) {
+    const context = tokenizer.context();
+    const node = startNode(3, context.offset, context.startLoc);
+    node.value = value;
+    endNode(node, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return node;
+  }
+  function parseList(tokenizer, index) {
+    const context = tokenizer.context();
+    const { lastOffset: offset, lastStartLoc: loc } = context;
+    const node = startNode(5, offset, loc);
+    node.index = parseInt(index, 10);
+    tokenizer.nextToken();
+    endNode(node, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return node;
+  }
+  function parseNamed(tokenizer, key) {
+    const context = tokenizer.context();
+    const { lastOffset: offset, lastStartLoc: loc } = context;
+    const node = startNode(4, offset, loc);
+    node.key = key;
+    tokenizer.nextToken();
+    endNode(node, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return node;
+  }
+  function parseLiteral(tokenizer, value) {
+    const context = tokenizer.context();
+    const { lastOffset: offset, lastStartLoc: loc } = context;
+    const node = startNode(9, offset, loc);
+    node.value = value.replace(KNOWN_ESCAPES, fromEscapeSequence);
+    tokenizer.nextToken();
+    endNode(node, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return node;
+  }
+  function parseLinkedModifier(tokenizer) {
+    const token = tokenizer.nextToken();
+    const context = tokenizer.context();
+    const { lastOffset: offset, lastStartLoc: loc } = context;
+    const node = startNode(8, offset, loc);
+    if (token.type !== 12) {
+      emitError(tokenizer, 11, context.lastStartLoc, 0);
+      node.value = "";
+      endNode(node, offset, loc);
+      return {
+        nextConsumeToken: token,
+        node
+      };
+    }
+    if (token.value == null) {
+      emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+    }
+    node.value = token.value || "";
+    endNode(node, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return {
+      node
+    };
+  }
+  function parseLinkedKey(tokenizer, value) {
+    const context = tokenizer.context();
+    const node = startNode(7, context.offset, context.startLoc);
+    node.value = value;
+    endNode(node, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return node;
+  }
+  function parseLinked(tokenizer) {
+    const context = tokenizer.context();
+    const linkedNode = startNode(6, context.offset, context.startLoc);
+    let token = tokenizer.nextToken();
+    if (token.type === 9) {
+      const parsed = parseLinkedModifier(tokenizer);
+      linkedNode.modifier = parsed.node;
+      token = parsed.nextConsumeToken || tokenizer.nextToken();
+    }
+    if (token.type !== 10) {
+      emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+    }
+    token = tokenizer.nextToken();
+    if (token.type === 2) {
+      token = tokenizer.nextToken();
+    }
+    switch (token.type) {
+      case 11:
+        if (token.value == null) {
+          emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+        }
+        linkedNode.key = parseLinkedKey(tokenizer, token.value || "");
+        break;
+      case 5:
+        if (token.value == null) {
+          emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+        }
+        linkedNode.key = parseNamed(tokenizer, token.value || "");
+        break;
+      case 6:
+        if (token.value == null) {
+          emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+        }
+        linkedNode.key = parseList(tokenizer, token.value || "");
+        break;
+      case 7:
+        if (token.value == null) {
+          emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+        }
+        linkedNode.key = parseLiteral(tokenizer, token.value || "");
+        break;
+      default:
+        emitError(tokenizer, 12, context.lastStartLoc, 0);
+        const nextContext = tokenizer.context();
+        const emptyLinkedKeyNode = startNode(7, nextContext.offset, nextContext.startLoc);
+        emptyLinkedKeyNode.value = "";
+        endNode(emptyLinkedKeyNode, nextContext.offset, nextContext.startLoc);
+        linkedNode.key = emptyLinkedKeyNode;
+        endNode(linkedNode, nextContext.offset, nextContext.startLoc);
+        return {
+          nextConsumeToken: token,
+          node: linkedNode
+        };
+    }
+    endNode(linkedNode, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return {
+      node: linkedNode
+    };
+  }
+  function parseMessage(tokenizer) {
+    const context = tokenizer.context();
+    const startOffset = context.currentType === 1 ? tokenizer.currentOffset() : context.offset;
+    const startLoc = context.currentType === 1 ? context.endLoc : context.startLoc;
+    const node = startNode(2, startOffset, startLoc);
+    node.items = [];
+    let nextToken = null;
+    do {
+      const token = nextToken || tokenizer.nextToken();
+      nextToken = null;
+      switch (token.type) {
+        case 0:
+          if (token.value == null) {
+            emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+          }
+          node.items.push(parseText(tokenizer, token.value || ""));
+          break;
+        case 6:
+          if (token.value == null) {
+            emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+          }
+          node.items.push(parseList(tokenizer, token.value || ""));
+          break;
+        case 5:
+          if (token.value == null) {
+            emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+          }
+          node.items.push(parseNamed(tokenizer, token.value || ""));
+          break;
+        case 7:
+          if (token.value == null) {
+            emitError(tokenizer, 13, context.lastStartLoc, 0, getTokenCaption(token));
+          }
+          node.items.push(parseLiteral(tokenizer, token.value || ""));
+          break;
+        case 8:
+          const parsed = parseLinked(tokenizer);
+          node.items.push(parsed.node);
+          nextToken = parsed.nextConsumeToken || null;
+          break;
+      }
+    } while (context.currentType !== 14 && context.currentType !== 1);
+    const endOffset = context.currentType === 1 ? context.lastOffset : tokenizer.currentOffset();
+    const endLoc = context.currentType === 1 ? context.lastEndLoc : tokenizer.currentPosition();
+    endNode(node, endOffset, endLoc);
+    return node;
+  }
+  function parsePlural(tokenizer, offset, loc, msgNode) {
+    const context = tokenizer.context();
+    let hasEmptyMessage = msgNode.items.length === 0;
+    const node = startNode(1, offset, loc);
+    node.cases = [];
+    node.cases.push(msgNode);
+    do {
+      const msg = parseMessage(tokenizer);
+      if (!hasEmptyMessage) {
+        hasEmptyMessage = msg.items.length === 0;
+      }
+      node.cases.push(msg);
+    } while (context.currentType !== 14);
+    if (hasEmptyMessage) {
+      emitError(tokenizer, 10, loc, 0);
+    }
+    endNode(node, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return node;
+  }
+  function parseResource(tokenizer) {
+    const context = tokenizer.context();
+    const { offset, startLoc } = context;
+    const msgNode = parseMessage(tokenizer);
+    if (context.currentType === 14) {
+      return msgNode;
+    } else {
+      return parsePlural(tokenizer, offset, startLoc, msgNode);
+    }
+  }
+  function parse2(source) {
+    const tokenizer = createTokenizer(source, assign$1({}, options));
+    const context = tokenizer.context();
+    const node = startNode(0, context.offset, context.startLoc);
+    if (location2 && node.loc) {
+      node.loc.source = source;
+    }
+    node.body = parseResource(tokenizer);
+    if (context.currentType !== 14) {
+      emitError(tokenizer, 13, context.lastStartLoc, 0, source[context.offset] || "");
+    }
+    endNode(node, tokenizer.currentOffset(), tokenizer.currentPosition());
+    return node;
+  }
+  return { parse: parse2 };
+}
+function getTokenCaption(token) {
+  if (token.type === 14) {
+    return "EOF";
+  }
+  const name = (token.value || "").replace(/\r?\n/gu, "\\n");
+  return name.length > 10 ? name.slice(0, 9) + "\u2026" : name;
+}
+function createTransformer(ast, options = {}) {
+  const _context = {
+    ast,
+    helpers: new Set()
+  };
+  const context = () => _context;
+  const helper = (name) => {
+    _context.helpers.add(name);
+    return name;
+  };
+  return { context, helper };
+}
+function traverseNodes(nodes, transformer) {
+  for (let i = 0; i < nodes.length; i++) {
+    traverseNode(nodes[i], transformer);
+  }
+}
+function traverseNode(node, transformer) {
+  switch (node.type) {
+    case 1:
+      traverseNodes(node.cases, transformer);
+      transformer.helper("plural");
+      break;
+    case 2:
+      traverseNodes(node.items, transformer);
+      break;
+    case 6:
+      const linked = node;
+      traverseNode(linked.key, transformer);
+      transformer.helper("linked");
+      break;
+    case 5:
+      transformer.helper("interpolate");
+      transformer.helper("list");
+      break;
+    case 4:
+      transformer.helper("interpolate");
+      transformer.helper("named");
+      break;
+  }
+}
+function transform(ast, options = {}) {
+  const transformer = createTransformer(ast);
+  transformer.helper("normalize");
+  ast.body && traverseNode(ast.body, transformer);
+  const context = transformer.context();
+  ast.helpers = Array.from(context.helpers);
+}
+function createCodeGenerator(ast, options) {
+  const { sourceMap, filename, breakLineCode, needIndent: _needIndent } = options;
+  const _context = {
+    source: ast.loc.source,
+    filename,
+    code: "",
+    column: 1,
+    line: 1,
+    offset: 0,
+    map: void 0,
+    breakLineCode,
+    needIndent: _needIndent,
+    indentLevel: 0
+  };
+  const context = () => _context;
+  function push(code, node) {
+    _context.code += code;
+  }
+  function _newline(n, withBreakLine = true) {
+    const _breakLineCode = withBreakLine ? breakLineCode : "";
+    push(_needIndent ? _breakLineCode + `  `.repeat(n) : _breakLineCode);
+  }
+  function indent(withNewLine = true) {
+    const level = ++_context.indentLevel;
+    withNewLine && _newline(level);
+  }
+  function deindent(withNewLine = true) {
+    const level = --_context.indentLevel;
+    withNewLine && _newline(level);
+  }
+  function newline() {
+    _newline(_context.indentLevel);
+  }
+  const helper = (key) => `_${key}`;
+  const needIndent = () => _context.needIndent;
+  return {
+    context,
+    push,
+    indent,
+    deindent,
+    newline,
+    helper,
+    needIndent
+  };
+}
+function generateLinkedNode(generator, node) {
+  const { helper } = generator;
+  generator.push(`${helper("linked")}(`);
+  generateNode(generator, node.key);
+  if (node.modifier) {
+    generator.push(`, `);
+    generateNode(generator, node.modifier);
+  }
+  generator.push(`)`);
+}
+function generateMessageNode(generator, node) {
+  const { helper, needIndent } = generator;
+  generator.push(`${helper("normalize")}([`);
+  generator.indent(needIndent());
+  const length = node.items.length;
+  for (let i = 0; i < length; i++) {
+    generateNode(generator, node.items[i]);
+    if (i === length - 1) {
+      break;
+    }
+    generator.push(", ");
+  }
+  generator.deindent(needIndent());
+  generator.push("])");
+}
+function generatePluralNode(generator, node) {
+  const { helper, needIndent } = generator;
+  if (node.cases.length > 1) {
+    generator.push(`${helper("plural")}([`);
+    generator.indent(needIndent());
+    const length = node.cases.length;
+    for (let i = 0; i < length; i++) {
+      generateNode(generator, node.cases[i]);
+      if (i === length - 1) {
+        break;
+      }
+      generator.push(", ");
+    }
+    generator.deindent(needIndent());
+    generator.push(`])`);
+  }
+}
+function generateResource(generator, node) {
+  if (node.body) {
+    generateNode(generator, node.body);
+  } else {
+    generator.push("null");
+  }
+}
+function generateNode(generator, node) {
+  const { helper } = generator;
+  switch (node.type) {
+    case 0:
+      generateResource(generator, node);
+      break;
+    case 1:
+      generatePluralNode(generator, node);
+      break;
+    case 2:
+      generateMessageNode(generator, node);
+      break;
+    case 6:
+      generateLinkedNode(generator, node);
+      break;
+    case 8:
+      generator.push(JSON.stringify(node.value), node);
+      break;
+    case 7:
+      generator.push(JSON.stringify(node.value), node);
+      break;
+    case 5:
+      generator.push(`${helper("interpolate")}(${helper("list")}(${node.index}))`, node);
+      break;
+    case 4:
+      generator.push(`${helper("interpolate")}(${helper("named")}(${JSON.stringify(node.key)}))`, node);
+      break;
+    case 9:
+      generator.push(JSON.stringify(node.value), node);
+      break;
+    case 3:
+      generator.push(JSON.stringify(node.value), node);
+      break;
+  }
+}
+const generate = (ast, options = {}) => {
+  const mode = isString(options.mode) ? options.mode : "normal";
+  const filename = isString(options.filename) ? options.filename : "message.intl";
+  const sourceMap = !!options.sourceMap;
+  const breakLineCode = options.breakLineCode != null ? options.breakLineCode : mode === "arrow" ? ";" : "\n";
+  const needIndent = options.needIndent ? options.needIndent : mode !== "arrow";
+  const helpers = ast.helpers || [];
+  const generator = createCodeGenerator(ast, {
+    mode,
+    filename,
+    sourceMap,
+    breakLineCode,
+    needIndent
+  });
+  generator.push(mode === "normal" ? `function __msg__ (ctx) {` : `(ctx) => {`);
+  generator.indent(needIndent);
+  if (helpers.length > 0) {
+    generator.push(`const { ${helpers.map((s) => `${s}: _${s}`).join(", ")} } = ctx`);
+    generator.newline();
+  }
+  generator.push(`return `);
+  generateNode(generator, ast);
+  generator.deindent(needIndent);
+  generator.push(`}`);
+  const { code, map } = generator.context();
+  return {
+    ast,
+    code,
+    map: map ? map.toJSON() : void 0
+  };
+};
+function baseCompile(source, options = {}) {
+  const assignedOptions = assign$1({}, options);
+  const parser = createParser(assignedOptions);
+  const ast = parser.parse(source);
+  transform(ast, assignedOptions);
+  return generate(ast, assignedOptions);
+}
 /*!
   * @intlify/devtools-if v9.1.7
   * (c) 2021 kazuya kawaguchi
@@ -4803,6 +5963,9 @@ function getDefaultLinkedModifiers() {
   };
 }
 let _compiler;
+function registerMessageCompiler(compiler) {
+  _compiler = compiler;
+}
 let _additionalMeta = null;
 const setAdditionalMeta = (meta) => {
   _additionalMeta = meta;
@@ -4933,6 +6096,27 @@ function updateFallbackLocale(ctx, locale, fallback) {
   const context = ctx;
   context.__localeChainCache = new Map();
   getLocaleChain(ctx, fallback, locale);
+}
+const defaultOnCacheKey = (source) => source;
+let compileCache = Object.create(null);
+function compileToFunction(source, options = {}) {
+  {
+    const onCacheKey = options.onCacheKey || defaultOnCacheKey;
+    const key = onCacheKey(source);
+    const cached = compileCache[key];
+    if (cached) {
+      return cached;
+    }
+    let occurred = false;
+    const onError = options.onError || defaultOnError;
+    options.onError = (err) => {
+      occurred = true;
+      onError(err);
+    };
+    const { code } = baseCompile(source, options);
+    const msg = new Function(`return ${code}`)();
+    return !occurred ? compileCache[key] = msg : msg;
+  }
 }
 function createCoreError(code) {
   return createCompileError(code, null, void 0);
@@ -6082,6 +7266,7 @@ function injectGlobalFields(app, composer) {
     Object.defineProperty(app.config.globalProperties, `$${method}`, desc);
   });
 }
+registerMessageCompiler(compileToFunction);
 {
   initFeatureFlags();
 }
@@ -6361,17 +7546,17 @@ function joinStyles(styles2) {
     return acc + "".concat(styleName, ": ").concat(styles2[styleName], ";");
   }, "");
 }
-function transformIsMeaningful(transform2) {
-  return transform2.size !== meaninglessTransform.size || transform2.x !== meaninglessTransform.x || transform2.y !== meaninglessTransform.y || transform2.rotate !== meaninglessTransform.rotate || transform2.flipX || transform2.flipY;
+function transformIsMeaningful(transform3) {
+  return transform3.size !== meaninglessTransform.size || transform3.x !== meaninglessTransform.x || transform3.y !== meaninglessTransform.y || transform3.rotate !== meaninglessTransform.rotate || transform3.flipX || transform3.flipY;
 }
 function transformForSvg(_ref2) {
-  var transform2 = _ref2.transform, containerWidth = _ref2.containerWidth, iconWidth = _ref2.iconWidth;
+  var transform3 = _ref2.transform, containerWidth = _ref2.containerWidth, iconWidth = _ref2.iconWidth;
   var outer = {
     transform: "translate(".concat(containerWidth / 2, " 256)")
   };
-  var innerTranslate = "translate(".concat(transform2.x * 32, ", ").concat(transform2.y * 32, ") ");
-  var innerScale = "scale(".concat(transform2.size / 16 * (transform2.flipX ? -1 : 1), ", ").concat(transform2.size / 16 * (transform2.flipY ? -1 : 1), ") ");
-  var innerRotate = "rotate(".concat(transform2.rotate, " 0 0)");
+  var innerTranslate = "translate(".concat(transform3.x * 32, ", ").concat(transform3.y * 32, ") ");
+  var innerScale = "scale(".concat(transform3.size / 16 * (transform3.flipX ? -1 : 1), ", ").concat(transform3.size / 16 * (transform3.flipY ? -1 : 1), ") ");
+  var innerRotate = "rotate(".concat(transform3.rotate, " 0 0)");
   var inner = {
     transform: "".concat(innerTranslate, " ").concat(innerScale, " ").concat(innerRotate)
   };
@@ -6385,17 +7570,17 @@ function transformForSvg(_ref2) {
   };
 }
 function transformForCss(_ref2) {
-  var transform2 = _ref2.transform, _ref2$width = _ref2.width, width = _ref2$width === void 0 ? UNITS_IN_GRID : _ref2$width, _ref2$height = _ref2.height, height = _ref2$height === void 0 ? UNITS_IN_GRID : _ref2$height, _ref2$startCentered = _ref2.startCentered, startCentered = _ref2$startCentered === void 0 ? false : _ref2$startCentered;
+  var transform3 = _ref2.transform, _ref2$width = _ref2.width, width = _ref2$width === void 0 ? UNITS_IN_GRID : _ref2$width, _ref2$height = _ref2.height, height = _ref2$height === void 0 ? UNITS_IN_GRID : _ref2$height, _ref2$startCentered = _ref2.startCentered, startCentered = _ref2$startCentered === void 0 ? false : _ref2$startCentered;
   var val = "";
   if (startCentered && IS_IE) {
-    val += "translate(".concat(transform2.x / d - width / 2, "em, ").concat(transform2.y / d - height / 2, "em) ");
+    val += "translate(".concat(transform3.x / d - width / 2, "em, ").concat(transform3.y / d - height / 2, "em) ");
   } else if (startCentered) {
-    val += "translate(calc(-50% + ".concat(transform2.x / d, "em), calc(-50% + ").concat(transform2.y / d, "em)) ");
+    val += "translate(calc(-50% + ".concat(transform3.x / d, "em), calc(-50% + ").concat(transform3.y / d, "em)) ");
   } else {
-    val += "translate(".concat(transform2.x / d, "em, ").concat(transform2.y / d, "em) ");
+    val += "translate(".concat(transform3.x / d, "em, ").concat(transform3.y / d, "em) ");
   }
-  val += "scale(".concat(transform2.size / d * (transform2.flipX ? -1 : 1), ", ").concat(transform2.size / d * (transform2.flipY ? -1 : 1), ") ");
-  val += "rotate(".concat(transform2.rotate, "deg) ");
+  val += "scale(".concat(transform3.size / d * (transform3.flipX ? -1 : 1), ", ").concat(transform3.size / d * (transform3.flipY ? -1 : 1), ") ");
+  val += "rotate(".concat(transform3.rotate, "deg) ");
   return val;
 }
 var ALL_SPACE = {
@@ -6419,11 +7604,11 @@ function deGroup(abstract) {
   }
 }
 function makeIconMasking(_ref2) {
-  var children = _ref2.children, attributes = _ref2.attributes, main = _ref2.main, mask = _ref2.mask, explicitMaskId = _ref2.maskId, transform2 = _ref2.transform;
+  var children = _ref2.children, attributes = _ref2.attributes, main = _ref2.main, mask = _ref2.mask, explicitMaskId = _ref2.maskId, transform3 = _ref2.transform;
   var mainWidth = main.width, mainPath = main.icon;
   var maskWidth = mask.width, maskPath = mask.icon;
   var trans = transformForSvg({
-    transform: transform2,
+    transform: transform3,
     containerWidth: maskWidth,
     iconWidth: mainWidth
   });
@@ -6484,14 +7669,14 @@ function makeIconMasking(_ref2) {
   };
 }
 function makeIconStandard(_ref2) {
-  var children = _ref2.children, attributes = _ref2.attributes, main = _ref2.main, transform2 = _ref2.transform, styles2 = _ref2.styles;
+  var children = _ref2.children, attributes = _ref2.attributes, main = _ref2.main, transform3 = _ref2.transform, styles2 = _ref2.styles;
   var styleString = joinStyles(styles2);
   if (styleString.length > 0) {
     attributes["style"] = styleString;
   }
-  if (transformIsMeaningful(transform2)) {
+  if (transformIsMeaningful(transform3)) {
     var trans = transformForSvg({
-      transform: transform2,
+      transform: transform3,
       containerWidth: main.width,
       iconWidth: main.width
     });
@@ -6517,15 +7702,15 @@ function makeIconStandard(_ref2) {
   };
 }
 function asIcon(_ref2) {
-  var children = _ref2.children, main = _ref2.main, mask = _ref2.mask, attributes = _ref2.attributes, styles2 = _ref2.styles, transform2 = _ref2.transform;
-  if (transformIsMeaningful(transform2) && main.found && !mask.found) {
+  var children = _ref2.children, main = _ref2.main, mask = _ref2.mask, attributes = _ref2.attributes, styles2 = _ref2.styles, transform3 = _ref2.transform;
+  if (transformIsMeaningful(transform3) && main.found && !mask.found) {
     var width = main.width, height = main.height;
     var offset = {
       x: width / height / 2,
       y: 0.5
     };
     attributes["style"] = joinStyles(_objectSpread({}, styles2, {
-      "transform-origin": "".concat(offset.x + transform2.x / 16, "em ").concat(offset.y + transform2.y / 16, "em")
+      "transform-origin": "".concat(offset.x + transform3.x / 16, "em ").concat(offset.y + transform3.y / 16, "em")
     }));
   }
   return [{
@@ -6552,7 +7737,7 @@ function asSymbol(_ref2) {
   }];
 }
 function makeInlineSvgAbstract(params) {
-  var _params$icons = params.icons, main = _params$icons.main, mask = _params$icons.mask, prefix = params.prefix, iconName = params.iconName, transform2 = params.transform, symbol = params.symbol, title = params.title, maskId = params.maskId, titleId = params.titleId, extra = params.extra, _params$watchable = params.watchable, watchable = _params$watchable === void 0 ? false : _params$watchable;
+  var _params$icons = params.icons, main = _params$icons.main, mask = _params$icons.mask, prefix = params.prefix, iconName = params.iconName, transform3 = params.transform, symbol = params.symbol, title = params.title, maskId = params.maskId, titleId = params.titleId, extra = params.extra, _params$watchable = params.watchable, watchable = _params$watchable === void 0 ? false : _params$watchable;
   var _ref2 = mask.found ? mask : main, width = _ref2.width, height = _ref2.height;
   var isUploadedIcon = prefix === "fak";
   var widthClass = isUploadedIcon ? "" : "fa-w-".concat(Math.ceil(width / height * 16));
@@ -6592,7 +7777,7 @@ function makeInlineSvgAbstract(params) {
     main,
     mask,
     maskId,
-    transform: transform2,
+    transform: transform3,
     symbol,
     styles: _objectSpread({}, uploadedIconWidthStyle, extra.styles)
   });
@@ -6606,7 +7791,7 @@ function makeInlineSvgAbstract(params) {
   }
 }
 function makeLayersTextAbstract(params) {
-  var content = params.content, width = params.width, height = params.height, transform2 = params.transform, title = params.title, extra = params.extra, _params$watchable2 = params.watchable, watchable = _params$watchable2 === void 0 ? false : _params$watchable2;
+  var content = params.content, width = params.width, height = params.height, transform3 = params.transform, title = params.title, extra = params.extra, _params$watchable2 = params.watchable, watchable = _params$watchable2 === void 0 ? false : _params$watchable2;
   var attributes = _objectSpread({}, extra.attributes, title ? {
     "title": title
   } : {}, {
@@ -6616,9 +7801,9 @@ function makeLayersTextAbstract(params) {
     attributes[DATA_FA_I2SVG] = "";
   }
   var styles2 = _objectSpread({}, extra.styles);
-  if (transformIsMeaningful(transform2)) {
+  if (transformIsMeaningful(transform3)) {
     styles2["transform"] = transformForCss({
-      transform: transform2,
+      transform: transform3,
       startCentered: true,
       width,
       height
@@ -6751,7 +7936,7 @@ function toHtml(abstractNodes) {
   }
 }
 var parseTransformString = function parseTransformString2(transformString) {
-  var transform2 = {
+  var transform3 = {
     size: 16,
     x: 0,
     y: 0,
@@ -6760,7 +7945,7 @@ var parseTransformString = function parseTransformString2(transformString) {
     rotate: 0
   };
   if (!transformString) {
-    return transform2;
+    return transform3;
   } else {
     return transformString.toLowerCase().split(" ").reduce(function(acc, n) {
       var parts = n.toLowerCase().split("-");
@@ -6802,7 +7987,7 @@ var parseTransformString = function parseTransformString2(transformString) {
           break;
       }
       return acc;
-    }, transform2);
+    }, transform3);
   }
 };
 function MissingIcon(error) {
@@ -7026,13 +8211,13 @@ function resolveIcons(next) {
 var library = new Library();
 var _cssInserted = false;
 var parse = {
-  transform: function transform(transformString) {
+  transform: function transform2(transformString) {
     return parseTransformString(transformString);
   }
 };
 var icon = resolveIcons(function(iconDefinition) {
   var params = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
-  var _params$transform = params.transform, transform2 = _params$transform === void 0 ? meaninglessTransform : _params$transform, _params$symbol = params.symbol, symbol = _params$symbol === void 0 ? false : _params$symbol, _params$mask = params.mask, mask = _params$mask === void 0 ? null : _params$mask, _params$maskId = params.maskId, maskId = _params$maskId === void 0 ? null : _params$maskId, _params$title = params.title, title = _params$title === void 0 ? null : _params$title, _params$titleId = params.titleId, titleId = _params$titleId === void 0 ? null : _params$titleId, _params$classes = params.classes, classes = _params$classes === void 0 ? [] : _params$classes, _params$attributes = params.attributes, attributes = _params$attributes === void 0 ? {} : _params$attributes, _params$styles = params.styles, styles2 = _params$styles === void 0 ? {} : _params$styles;
+  var _params$transform = params.transform, transform3 = _params$transform === void 0 ? meaninglessTransform : _params$transform, _params$symbol = params.symbol, symbol = _params$symbol === void 0 ? false : _params$symbol, _params$mask = params.mask, mask = _params$mask === void 0 ? null : _params$mask, _params$maskId = params.maskId, maskId = _params$maskId === void 0 ? null : _params$maskId, _params$title = params.title, title = _params$title === void 0 ? null : _params$title, _params$titleId = params.titleId, titleId = _params$titleId === void 0 ? null : _params$titleId, _params$classes = params.classes, classes = _params$classes === void 0 ? [] : _params$classes, _params$attributes = params.attributes, attributes = _params$attributes === void 0 ? {} : _params$attributes, _params$styles = params.styles, styles2 = _params$styles === void 0 ? {} : _params$styles;
   if (!iconDefinition)
     return;
   var prefix = iconDefinition.prefix, iconName = iconDefinition.iconName, icon2 = iconDefinition.icon;
@@ -7060,7 +8245,7 @@ var icon = resolveIcons(function(iconDefinition) {
       },
       prefix,
       iconName,
-      transform: _objectSpread({}, meaninglessTransform, transform2),
+      transform: _objectSpread({}, meaninglessTransform, transform3),
       symbol,
       title,
       maskId,
@@ -7075,7 +8260,7 @@ var icon = resolveIcons(function(iconDefinition) {
 });
 var text = function text2(content) {
   var params = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
-  var _params$transform2 = params.transform, transform2 = _params$transform2 === void 0 ? meaninglessTransform : _params$transform2, _params$title2 = params.title, title = _params$title2 === void 0 ? null : _params$title2, _params$classes2 = params.classes, classes = _params$classes2 === void 0 ? [] : _params$classes2, _params$attributes2 = params.attributes, attributes = _params$attributes2 === void 0 ? {} : _params$attributes2, _params$styles2 = params.styles, styles2 = _params$styles2 === void 0 ? {} : _params$styles2;
+  var _params$transform2 = params.transform, transform3 = _params$transform2 === void 0 ? meaninglessTransform : _params$transform2, _params$title2 = params.title, title = _params$title2 === void 0 ? null : _params$title2, _params$classes2 = params.classes, classes = _params$classes2 === void 0 ? [] : _params$classes2, _params$attributes2 = params.attributes, attributes = _params$attributes2 === void 0 ? {} : _params$attributes2, _params$styles2 = params.styles, styles2 = _params$styles2 === void 0 ? {} : _params$styles2;
   return apiObject({
     type: "text",
     content
@@ -7083,7 +8268,7 @@ var text = function text2(content) {
     ensureCss();
     return makeLayersTextAbstract({
       content,
-      transform: _objectSpread({}, meaninglessTransform, transform2),
+      transform: _objectSpread({}, meaninglessTransform, transform3),
       title,
       extra: {
         attributes,
@@ -7453,14 +8638,14 @@ var FontAwesomeIcon = defineComponent({
     var classes = computed(function() {
       return objectWithKey("classes", classList(props));
     });
-    var transform2 = computed(function() {
+    var transform3 = computed(function() {
       return objectWithKey("transform", typeof props.transform === "string" ? parse.transform(props.transform) : props.transform);
     });
     var mask = computed(function() {
       return objectWithKey("mask", normalizeIconArgs(props.mask));
     });
     var renderedIcon = computed(function() {
-      return icon(icon$$1.value, _extends({}, classes.value, transform2.value, mask.value, {
+      return icon(icon$$1.value, _extends({}, classes.value, transform3.value, mask.value, {
         symbol: props.symbol,
         title: props.title
       }));
@@ -7526,11 +8711,11 @@ defineComponent({
     var classes = computed(function() {
       return objectWithKey("classes", [].concat(toConsumableArray(props.counter ? [familyPrefix + "-layers-counter"] : []), toConsumableArray(props.position ? [familyPrefix + "-layers-" + props.position] : [])));
     });
-    var transform2 = computed(function() {
+    var transform3 = computed(function() {
       return objectWithKey("transform", typeof props.transform === "string" ? parse.transform(props.transform) : props.transform);
     });
     var abstractElement = computed(function() {
-      var _text = text(props.value.toString(), _extends({}, transform2.value, classes.value)), abstract = _text.abstract;
+      var _text = text(props.value.toString(), _extends({}, transform3.value, classes.value)), abstract = _text.abstract;
       if (props.counter) {
         abstract[0].attributes.class = abstract[0].attributes.class.replace("fa-layers-text", "");
       }

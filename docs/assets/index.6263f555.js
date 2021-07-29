@@ -1,4 +1,4 @@
-import { p as pushScopeId, a as popScopeId, r as resolveComponent, o as openBlock, c as createBlock, b as createVNode, w as withScopeId, d as defineComponent, u as useI18n, t as toDisplayString, e as withDirectives, v as vModelSelect, f as createTextVNode, F as Fragment, g as createRouter, h as createWebHashHistory, l as library, i as faLinkedin, j as faGithub, k as faTwitter, m as createI18n, n as createApp, q as FontAwesomeIcon } from "./vendor.a933f8bd.js";
+import { p as pushScopeId, a as popScopeId, r as resolveComponent, o as openBlock, c as createBlock, b as createVNode, w as withScopeId, d as defineComponent, u as useI18n, t as toDisplayString, e as withDirectives, v as vModelSelect, f as createTextVNode, F as Fragment, g as createRouter, h as createWebHashHistory, l as library, i as faLinkedin, j as faGithub, k as faTwitter, m as createI18n, n as createApp, q as FontAwesomeIcon } from "./vendor.89681dca.js";
 var Profiles_vue_vue_type_style_index_0_scoped_true_lang = ".profiles[data-v-2f622e2d] {\n  font-size: 1.5rem;\n  margin-right: 0.5rem;\n  transition: 200ms;\n}\n.profiles[data-v-2f622e2d]:hover {\n  color: var(--light-primary);\n}";
 const _sfc_main$5 = {};
 const _withId$1 = /* @__PURE__ */ withScopeId("data-v-2f622e2d");
@@ -214,14 +214,14 @@ const routes = [
     path: "/projects",
     name: "projects",
     component: function() {
-      return __vitePreload(() => import("./Projects.d4953ec9.js"), true ? ["assets/Projects.d4953ec9.js","assets/vendor.a933f8bd.js"] : void 0);
+      return __vitePreload(() => import("./Projects.a20dc7e6.js"), true ? ["assets/Projects.a20dc7e6.js","assets/vendor.89681dca.js"] : void 0);
     }
   },
   {
     path: "/cv",
     name: "cv",
     component: function() {
-      return __vitePreload(() => import("./CV.22e25cee.js"), true ? ["assets/CV.22e25cee.js","assets/vendor.a933f8bd.js"] : void 0);
+      return __vitePreload(() => import("./CV.0534fd88.js"), true ? ["assets/CV.0534fd88.js","assets/vendor.89681dca.js"] : void 0);
     }
   }
 ];

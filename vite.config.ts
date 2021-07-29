@@ -9,6 +9,7 @@ export default defineConfig({
     vue(), 
     vueI18n({ 
       include: path.resolve(__dirname, './src/locales.json'),
+      runtimeOnly: false,
     }),
   ],
   build: {
