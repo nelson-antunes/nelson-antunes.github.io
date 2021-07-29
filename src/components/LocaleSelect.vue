@@ -1,6 +1,8 @@
 <template>
   <div class="select">
-    <label for="locale"><b>{{ $t("language") }}:</b> </label>
+    <label for="locale" style="font-size:1.5rem">      
+      <FontAwesomeIcon icon="language" />
+    </label>
     <select name="locale" id="locale" v-model="locale">
       <option value="pt-br">🇧🇷</option>
       <option value="en">🇺🇸</option>
@@ -20,3 +22,14 @@ export default defineComponent({
   },
 })
 </script>
+
+<style lang="scss" scoped>
+.select {
+  font-size: 1.5rem;
+  display: flex;
+  justify-content: center;
+  & * {
+    margin-left: .5rem;
+  }
+}
+</style>

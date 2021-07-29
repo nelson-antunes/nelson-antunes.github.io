@@ -9,6 +9,9 @@
     <a class="profiles" target="_blank" href="https://twitter.com/nelson_antunes_">
       <FontAwesomeIcon :icon="['fab','twitter']" />
     </a>
+    <a class="profiles" target="_blank" href="https://www.hackerrank.com/nelson_a_antunes">
+      <FontAwesomeIcon :icon="['fab','hackerrank']" />
+    </a>
   </div>
 </template>
 

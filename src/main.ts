@@ -2,14 +2,15 @@ import { createApp } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { library } from '@fortawesome/fontawesome-svg-core'
-import { faLinkedin, faGithub, faTwitter } from '@fortawesome/free-brands-svg-icons'
+import { faLinkedin, faGithub, faTwitter, faHackerrank } from '@fortawesome/free-brands-svg-icons'
+import { faLanguage } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 
 import App from './App.vue'
 import router from './router'
 import messages from './i18n.json'
 
-library.add({faLinkedin, faGithub, faTwitter})
+library.add({faLinkedin, faGithub, faTwitter, faHackerrank, faLanguage})
 
 const i18n = createI18n({
     fallbackLocale: "en",
