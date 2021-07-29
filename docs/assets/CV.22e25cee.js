@@ -1,1 +1,11 @@
-import{o as e,c as n,b as r,t}from"./vendor.a933f8bd.js";const s={},a=r("section",null," 🚧 🏗 🚧 ",-1);s.render=function(s,l){return e(),n("article",null,[r("h1",null,t(s.$t("resume")),1),a])};export{s as default};
+import { o as openBlock, c as createBlock, b as createVNode, t as toDisplayString } from "./vendor.a933f8bd.js";
+const _sfc_main = {};
+const _hoisted_1 = /* @__PURE__ */ createVNode("section", null, " \u{1F6A7} \u{1F3D7} \u{1F6A7} ", -1);
+function _sfc_render(_ctx, _cache) {
+  return openBlock(), createBlock("article", null, [
+    createVNode("h1", null, toDisplayString(_ctx.$t("resume")), 1),
+    _hoisted_1
+  ]);
+}
+_sfc_main.render = _sfc_render;
+export { _sfc_main as default };
